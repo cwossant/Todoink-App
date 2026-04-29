@@ -1,19 +1,23 @@
 {
   // Keep VS Code responsive by excluding generated outputs and the embedded
   // Flutter SDK checkout from file watching and search.
+  "dart.flutterSdkPath": "C:/Todoink-App/flutter_projects/flutter_sdk",
   "files.watcherExclude": {
     "**/build/**": true,
     "**/.dart_tool/**": true,
     "**/.gradle/**": true,
-    "flutter/**": true
+    "flutter/**": true,
+    "flutter_sdk/**": true
   },
   "search.exclude": {
     "**/build/**": true,
     "**/.dart_tool/**": true,
     "**/.gradle/**": true,
-    "flutter/**": true
+    "flutter/**": true,
+    "flutter_sdk/**": true
   },
   "files.exclude": {
-    "flutter/**": true
+    "flutter/**": true,
+    "flutter_sdk/**": true
   }
 }
