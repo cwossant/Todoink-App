@@ -1,0 +1,44 @@
+name: todo_list_app
+description: A complete daily To-Do List application with filtering, sorting, and theming.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+
+  # Date & Time
+  intl: ^0.19.0
+
+  # UUID Generation
+  uuid: ^4.0.0
+
+  # Local Data Persistence
+  hive: ^2.2.0
+  hive_flutter: ^1.1.0
+
+  # UI & Material Design 3
+  cupertino_icons: ^1.0.2
+  flutter_local_notifications: ^21.0.0
+  timezone: ^0.11.0
+  flutter_timezone: ^5.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.0
+  riverpod_generator: ^2.3.0
+
+flutter:
+  uses-material-design: true
