@@ -226,8 +226,8 @@ class _DottedConnector extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final dotHeight = 3.0;
-        final gap = 4.0;
+        const dotHeight = 3.0;
+        const gap = 4.0;
         final full = dotHeight + gap;
         final count = (constraints.maxHeight / full).floor();
         final dotCount = count < 1 ? 1 : count;
