@@ -114,4 +114,29 @@ class TaskNotifier extends StateNotifier<List<Task>> {
             task.date.day == targetDate.day)
         .toList();
   }
+
+  /// Delete all tasks marked as done.
+  Future<int> clearCompletedTasks() async {
+    final completed = state.where((t) => t.status == TaskStatus.done).toList();
+    if (completed.isEmpty) return 0;
+
+    state = state.where((t) => t.status != TaskStatus.done).toList();
+
+    for (final task in completed) {
+      await HiveService.deleteTask(task.id);
+      await NotificationService.instance.cancelTaskReminder(task.id);
+    }
+
+    return completed.length;
+  }
+
+  /// Clears all tasks and cancels any scheduled task reminders.
+  Future<void> resetTasks() async {
+    for (final task in state) {
+      await NotificationService.instance.cancelTaskReminder(task.id);
+    }
+
+    state = [];
+    await HiveService.clearAllTasks();
+  }
 }

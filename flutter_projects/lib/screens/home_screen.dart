@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
+import '../models/task_status.dart';
 import '../providers/task_provider.dart';
 import '../providers/filter_sort_provider.dart';
+import '../providers/pinned_tasks_provider.dart';
 import '../widgets/filter_sort_sheet.dart';
 import '../widgets/timeline_task_tile.dart';
 import '../services/notification_service.dart';
@@ -21,6 +23,15 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   DateTime selectedDate = DateTime.now();
   final String userName = 'Teya';
+
+  Future<bool?>? _notificationsEnabledFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationsEnabledFuture =
+        NotificationService.instance.areNotificationsEnabled();
+  }
 
   void _showAddTaskScreen() {
     Navigator.of(context).push(
@@ -82,7 +93,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (hour >= 5 && hour < 12) return 'Good Morning';
     if (hour >= 12 && hour < 17) return 'Good Afternoon';
     if (hour >= 17 && hour < 21) return 'Good Evening';
-    return 'Good Night';
+    return 'Good Evening';
   }
 
   bool _isSameDate(DateTime a, DateTime b) {
@@ -98,39 +109,119 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _setDailyReminder() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
+    final enabledBefore =
+        await NotificationService.instance.areNotificationsEnabled();
+    final enabledAfter =
+        await NotificationService.instance.ensureNotificationPermission();
 
-    if (picked == null) return;
-
-    await NotificationService.instance.requestPermissions();
-    await NotificationService.instance.scheduleDailyReminder(picked);
+    if (mounted) {
+      setState(() {
+        _notificationsEnabledFuture =
+            NotificationService.instance.areNotificationsEnabled();
+      });
+    }
 
     if (!mounted) return;
+    final message = enabledAfter
+        ? (enabledBefore == true
+            ? 'Notifications already enabled'
+            : 'Notifications enabled')
+        : 'Notifications permission not granted';
+
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Daily reminder set for ${picked.format(context)}'),
-      ),
+      SnackBar(content: Text(message)),
     );
+  }
+
+  bool _isOverdue(Task task, DateTime now, DateTime todayStart) {
+    if (task.status == TaskStatus.done) return false;
+
+    final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
+    if (taskDay.isBefore(todayStart)) return true;
+
+    if (_isSameDate(taskDay, todayStart) && task.time != null) {
+      final due = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        task.time!.hour,
+        task.time!.minute,
+      );
+      return due.isBefore(now);
+    }
+
+    return false;
+  }
+
+  Future<void> _togglePin(Task task) async {
+    final result = await ref
+        .read(pinnedTasksByDayProvider.notifier)
+        .togglePinForDay(selectedDate, task.id);
+
+    if (!mounted) return;
+    if (result.status == PinToggleStatus.limitReached) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You can pin up to 3 tasks per day')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final filteredTasks = ref.watch(filteredAndSortedTasksProvider);
+    final pinnedByDay = ref.watch(pinnedTasksByDayProvider);
     final colorScheme = Theme.of(context).colorScheme;
     final headerDateFormat = DateFormat('EEEE, dd MMMM, yyyy');
+    final dayLabelFormat = DateFormat('EEE');
     final now = DateTime.now();
     final baseDate = DateTime(now.year, now.month, now.day);
+    final isSelectedToday = _isSameDate(selectedDate, baseDate);
 
-    // Get tasks for the selected date
-    final tasksForDate = filteredTasks
-        .where((task) =>
-            task.date.year == selectedDate.year &&
-            task.date.month == selectedDate.month &&
-            task.date.day == selectedDate.day)
-        .toList();
+    // Precompute which of the next 7 days have tasks (for the dot indicator)
+    // to avoid scanning the full list 7 times.
+    final weekStart = baseDate;
+    final weekEndExclusive = baseDate.add(const Duration(days: 7));
+    final hasTasksDayKeys = <String>{};
+    for (final task in filteredTasks) {
+      final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
+      if (taskDay.isBefore(weekStart) || !taskDay.isBefore(weekEndExclusive)) {
+        continue;
+      }
+      hasTasksDayKeys.add(PinnedTasksByDayNotifier.dayKey(taskDay));
+    }
+
+    // Get tasks for the selected date (single pass)
+    final tasksForDate = <Task>[];
+    for (final task in filteredTasks) {
+      if (_isSameDate(task.date, selectedDate)) {
+        tasksForDate.add(task);
+      }
+    }
+
+    final doneCountForDate =
+      tasksForDate.where((t) => t.status == TaskStatus.done).length;
+
+    final overdueCount = filteredTasks
+      .where((t) => _isOverdue(t, now, baseDate))
+      .length;
+
+    final pinnedIdsForSelectedDay =
+      pinnedByDay[PinnedTasksByDayNotifier.dayKey(selectedDate)] ??
+        const <String>[];
+
+    final tasksById = <String, Task>{
+      for (final task in tasksForDate) task.id: task,
+    };
+
+    final pinnedTasksForDate = <Task>[];
+    for (final id in pinnedIdsForSelectedDay) {
+      final task = tasksById[id];
+      if (task != null) pinnedTasksForDate.add(task);
+    }
+    final unpinnedTasksForDate = tasksForDate
+      .where((t) => !pinnedIdsForSelectedDay.contains(t.id))
+      .toList();
+    final displayTasksForDate = [...pinnedTasksForDate, ...unpinnedTasksForDate];
 
     return Scaffold(
       body: SafeArea(
@@ -203,6 +294,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   itemBuilder: (context, index) {
                     final date = baseDate.add(Duration(days: index));
                     final isSelected = _isSameDate(date, selectedDate);
+                    final hasTasksForDay =
+                        hasTasksDayKeys.contains(PinnedTasksByDayNotifier.dayKey(date));
 
                     final dayLabelStyle = Theme.of(context)
                         .textTheme
@@ -222,50 +315,71 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   : colorScheme.onSurface,
                             );
 
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () {
-                        setState(() {
-                          selectedDate = date;
-                        });
-                      },
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            DateFormat('EEE').format(date),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: dayLabelStyle,
-                          ),
-                          const SizedBox(height: 10),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isSelected
-                                  ? colorScheme.primary
-                                  : colorScheme.surfaceContainerHighest,
-                              border: Border.all(
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          dayLabelFormat.format(date),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: dayLabelStyle,
+                        ),
+                        const SizedBox(height: 10),
+                        Material(
+                          color: Colors.transparent,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () {
+                              setState(() {
+                                selectedDate = date;
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
                                 color: isSelected
                                     ? colorScheme.primary
-                                    : colorScheme.outlineVariant,
-                                width: isSelected ? 0 : 1,
+                                    : colorScheme.surfaceContainerHighest,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? colorScheme.primary
+                                      : colorScheme.outlineVariant,
+                                  width: isSelected ? 0 : 1,
+                                ),
                               ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${date.day}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: dayNumberStyle,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Text(
+                                    '${date.day}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: dayNumberStyle,
+                                  ),
+                                  if (hasTasksForDay)
+                                    Positioned(
+                                      bottom: 8,
+                                      child: Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isSelected
+                                              ? colorScheme.onPrimary
+                                              : colorScheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -305,9 +419,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             const SizedBox(height: 12),
                             SizedBox(
                               height: 36,
-                              child: ElevatedButton(
-                                onPressed: _setDailyReminder,
-                                child: const Text('Set Now'),
+                              child: FutureBuilder<bool?>(
+                                future: _notificationsEnabledFuture ??=
+                                    NotificationService.instance
+                                        .areNotificationsEnabled(),
+                                builder: (context, snapshot) {
+                                  final enabled = snapshot.data == true;
+                                  return ElevatedButton(
+                                    onPressed: enabled ? null : _setDailyReminder,
+                                    child: Text(
+                                      enabled ? 'Notifications enabled' : 'Set Now',
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ],
@@ -337,27 +461,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               sliver: SliverToBoxAdapter(
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Tasks',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyLarge
-                            ?.copyWith(fontWeight: FontWeight.w800),
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Tasks',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        if (isSelectedToday && overdueCount > 0)
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const AllTasksScreen(showOverdueOnly: true),
+                                ),
+                              );
+                            },
+                            child: Text('Overdue ($overdueCount)'),
+                          ),
+                        TextButton(
+                          onPressed: _showAllTasksScreen,
+                          child: const Text('See all'),
+                        ),
+                        IconButton(
+                          onPressed: _showFilterSortSheet,
+                          tooltip: 'Filter & Sort',
+                          icon: const Icon(Icons.tune),
+                        ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: _showAllTasksScreen,
-                      child: const Text('See all'),
-                    ),
-                    IconButton(
-                      onPressed: _showFilterSortSheet,
-                      tooltip: 'Filter & Sort',
-                      icon: const Icon(Icons.tune),
+                    Text(
+                      'Done $doneCountForDate / Total ${tasksForDate.length}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -397,18 +542,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    final task = tasksForDate[index];
+                    final task = displayTasksForDate[index];
+                    final isPinned = pinnedIdsForSelectedDay.contains(task.id);
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: TimelineTaskTile(
                         task: task,
-                        isLast: index == tasksForDate.length - 1,
+                        isLast: index == displayTasksForDate.length - 1,
                         onEdit: () => _showEditTaskScreen(task),
                         onDelete: () => _deleteTask(task.id),
+                        isPinned: isPinned,
+                        onTogglePin: () => _togglePin(task),
                       ),
                     );
                   },
-                  childCount: tasksForDate.length,
+                  childCount: displayTasksForDate.length,
                 ),
               ),
             const SliverToBoxAdapter(

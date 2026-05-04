@@ -12,6 +12,9 @@ class TimelineTaskTile extends ConsumerWidget {
   final bool showDate;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final bool isPinned;
+  final VoidCallback? onTogglePin;
+  final bool isOverdue;
 
   const TimelineTaskTile({
     super.key,
@@ -20,6 +23,9 @@ class TimelineTaskTile extends ConsumerWidget {
     required this.onEdit,
     required this.onDelete,
     this.showDate = false,
+    this.isPinned = false,
+    this.onTogglePin,
+    this.isOverdue = false,
   });
 
   Color _getStatusColor(TaskStatus status) {
@@ -85,44 +91,63 @@ class TimelineTaskTile extends ConsumerWidget {
         children: [
           SizedBox(
             width: 44,
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    final next = _nextStatus(task.status);
-                    ref
-                        .read(taskProvider.notifier)
-                        .updateTaskStatus(task.id, next);
-                  },
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: statusColor,
-                      boxShadow: [
-                        BoxShadow(
-                          color: statusColor.withValues(alpha: 0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const circleSize = 32.0;
+                const connectorGap = 6.0;
+                final circleTop = (constraints.maxHeight - circleSize) / 2;
+
+                return Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    if (!isLast)
+                      Positioned(
+                        top: circleTop + circleSize + connectorGap,
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: _DottedConnector(
+                          color: colorScheme.outlineVariant,
                         ),
-                      ],
+                      ),
+                    Positioned(
+                      top: circleTop,
+                      left: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: () {
+                          final next = _nextStatus(task.status);
+                          ref
+                              .read(taskProvider.notifier)
+                              .updateTaskStatus(task.id, next);
+                        },
+                        child: Center(
+                          child: Container(
+                            width: circleSize,
+                            height: circleSize,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: statusColor,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: statusColor.withValues(alpha: 0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _getStatusIcon(task.status),
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    child: Icon(
-                      _getStatusIcon(task.status),
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                if (!isLast)
-                  Expanded(
-                    child: _DottedConnector(
-                      color: colorScheme.outlineVariant,
-                    ),
-                  ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
           const SizedBox(width: 12),
@@ -167,7 +192,9 @@ class TimelineTaskTile extends ConsumerWidget {
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     fontWeight: FontWeight.w700,
-                                    color: colorScheme.primary,
+                                    color: isOverdue
+                                        ? colorScheme.error
+                                        : colorScheme.primary,
                                   ),
                         ),
                       ],
@@ -175,12 +202,14 @@ class TimelineTaskTile extends ConsumerWidget {
                         onSelected: (value) {
                           if (value == 'edit') {
                             onEdit();
+                          } else if (value == 'pin') {
+                            onTogglePin?.call();
                           } else if (value == 'delete') {
                             onDelete();
                           }
                         },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
                             value: 'edit',
                             child: Row(
                               children: [
@@ -190,7 +219,21 @@ class TimelineTaskTile extends ConsumerWidget {
                               ],
                             ),
                           ),
-                          PopupMenuItem(
+                          if (onTogglePin != null)
+                            PopupMenuItem(
+                              value: 'pin',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(isPinned ? 'Unpin' : 'Pin'),
+                                ],
+                              ),
+                            ),
+                          const PopupMenuItem(
                             value: 'delete',
                             child: Row(
                               children: [

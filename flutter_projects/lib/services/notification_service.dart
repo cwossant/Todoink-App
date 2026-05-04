@@ -36,7 +36,62 @@ class NotificationService {
     _isInitialized = true;
   }
 
+  /// Best-effort check for whether notifications are currently enabled.
+  ///
+  /// Returns:
+  /// - `true` if enabled
+  /// - `false` if disabled
+  /// - `null` if the platform/plugin version doesn't expose a reliable check
+  Future<bool?> areNotificationsEnabled() async {
+    await init();
+
+    try {
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = await (androidImpl as dynamic?)?.areNotificationsEnabled();
+      if (enabled is bool) return enabled;
+    } catch (_) {
+      // Ignore; fall through to iOS check.
+    }
+
+    try {
+      final iosImpl = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+
+      final permissions = await (iosImpl as dynamic?)?.checkPermissions();
+      if (permissions is bool) return permissions;
+
+      // Some plugin versions return a permissions object.
+      if (permissions != null) {
+        final alert = (permissions as dynamic).alert;
+        final badge = (permissions as dynamic).badge;
+        final sound = (permissions as dynamic).sound;
+        if (alert is bool || badge is bool || sound is bool) {
+          return (alert == true) || (badge == true) || (sound == true);
+        }
+      }
+    } catch (_) {
+      // Ignore.
+    }
+
+    return null;
+  }
+
+  /// Requests notification permission only if not already enabled.
+  ///
+  /// Returns `true` if notifications are enabled after the call.
+  Future<bool> ensureNotificationPermission() async {
+    final enabledBefore = await areNotificationsEnabled();
+    if (enabledBefore == true) return true;
+
+    await requestPermissions();
+
+    final enabledAfter = await areNotificationsEnabled();
+    return enabledAfter ?? false;
+  }
+
   Future<void> requestPermissions() async {
+    await init();
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.requestNotificationsPermission();

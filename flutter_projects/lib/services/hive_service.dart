@@ -6,11 +6,63 @@ import '../models/task_status.dart';
 /// Service for managing local data persistence using Hive
 class HiveService {
   static const String tasksBoxName = 'tasks';
+  static const String prefsBoxName = 'prefs';
+
+  static const String _pinnedByDayKey = 'pinnedByDay';
+  static const String _filterStatusKey = 'filterStatus';
+  static const String _sortOptionKey = 'sortOption';
 
   /// Initialize Hive and open the tasks box
   static Future<void> initHive() async {
     await Hive.initFlutter();
     await Hive.openBox<Map>(tasksBoxName);
+    await Hive.openBox(prefsBoxName);
+  }
+
+  static Future<void> ensurePrefsBoxOpen() async {
+    try {
+      if (Hive.isBoxOpen(prefsBoxName)) return;
+      await Hive.openBox(prefsBoxName);
+    } catch (e) {
+      print('Error opening prefs box: $e');
+    }
+  }
+
+  /// Returns a map of dayKey (yyyy-MM-dd) -> pinned task IDs.
+  static Future<Map<String, List<String>>> getPinnedTaskIdsByDay() async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      final raw = box.get(_pinnedByDayKey);
+      if (raw is! Map) return {};
+
+      final result = <String, List<String>>{};
+      raw.forEach((key, value) {
+        if (key is! String) return;
+        if (value is List) {
+          result[key] = value.whereType<String>().toList();
+        }
+      });
+      return result;
+    } catch (e) {
+      print('Error loading pinned tasks: $e');
+      return {};
+    }
+  }
+
+  static Future<void> savePinnedTaskIdsByDay(
+      Map<String, List<String>> pinnedByDay) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      final storable = <String, dynamic>{
+        for (final entry in pinnedByDay.entries)
+          entry.key: entry.value.toList(growable: false),
+      };
+      await box.put(_pinnedByDayKey, storable);
+    } catch (e) {
+      print('Error saving pinned tasks: $e');
+    }
   }
 
   /// Get all saved tasks
@@ -77,6 +129,63 @@ class HiveService {
       await box.clear();
     } catch (e) {
       print('Error clearing tasks: $e');
+    }
+  }
+
+  static Future<void> clearPrefs() async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      await box.clear();
+    } catch (e) {
+      print('Error clearing prefs: $e');
+    }
+  }
+
+  static Future<void> clearAllData() async {
+    await clearAllTasks();
+    await clearPrefs();
+  }
+
+  static String? getSavedFilterStatus() {
+    try {
+      if (!Hive.isBoxOpen(prefsBoxName)) return null;
+      final box = Hive.box(prefsBoxName);
+      final value = box.get(_filterStatusKey);
+      return value is String ? value : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String? getSavedSortOption() {
+    try {
+      if (!Hive.isBoxOpen(prefsBoxName)) return null;
+      final box = Hive.box(prefsBoxName);
+      final value = box.get(_sortOptionKey);
+      return value is String ? value : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> saveFilterStatus(String? statusName) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      await box.put(_filterStatusKey, statusName);
+    } catch (e) {
+      print('Error saving filter status: $e');
+    }
+  }
+
+  static Future<void> saveSortOption(String sortName) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      await box.put(_sortOptionKey, sortName);
+    } catch (e) {
+      print('Error saving sort option: $e');
     }
   }
 

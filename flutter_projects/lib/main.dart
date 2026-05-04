@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
+import 'providers/filter_sort_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'services/hive_service.dart';
@@ -23,6 +24,9 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Enable persistence for filter/sort selections.
+    ref.watch(persistFilterSortProvider);
+
     final themeMode = ref.watch(themeModeProvider);
     final primaryColor = ref.watch(customPrimaryColorProvider);
 
