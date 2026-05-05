@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Provider for theme mode (light/dark)
-final themeModeProvider = StateProvider<ThemeMode>((ref) {
-  return ThemeMode.light;
+import '../services/hive_service.dart';
+
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier()
+  : super(HiveService.getSavedThemeMode() ?? ThemeMode.light);
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    state = mode;
+    await HiveService.saveThemeMode(mode);
+  }
+}
+
+/// Provider for theme mode (system/light/dark), persisted in Hive prefs.
+final themeModeProvider =
+    StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+  return ThemeModeNotifier();
 });
 
 /// Soft, comfy sage green color for the app

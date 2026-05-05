@@ -79,7 +79,7 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen> {
     });
   }
 
-  void _saveTask() {
+  Future<void> _saveTask() async {
     if (titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a task title')),
@@ -96,16 +96,18 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen> {
         time: selectedTime,
         status: selectedStatus,
       );
-      ref.read(taskProvider.notifier).updateTask(updatedTask);
+      await ref.read(taskProvider.notifier).updateTask(updatedTask);
     } else {
       // Add new task
-      ref.read(taskProvider.notifier).addTask(
+      await ref.read(taskProvider.notifier).addTask(
             titleController.text.trim(),
             descriptionController.text.trim(),
             selectedDate,
             time: selectedTime,
           );
     }
+
+    if (!mounted) return;
 
     Navigator.of(context).pop();
   }

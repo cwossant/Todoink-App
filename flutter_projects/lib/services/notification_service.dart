@@ -14,6 +14,7 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   static const int _dailyReminderId = 9000;
+  static const Duration _taskReminderLeadTime = Duration(hours: 5);
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -24,8 +25,12 @@ class NotificationService {
     if (_isInitialized) return;
 
     tz.initializeTimeZones();
-    final localTimeZone = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(localTimeZone.identifier));
+    try {
+      final localTimeZone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(localTimeZone));
+    } catch (_) {
+      // If timezone lookup fails, fall back to tz.local defaults.
+    }
 
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -146,6 +151,7 @@ class NotificationService {
   }
 
   Future<void> scheduleDailyReminder(TimeOfDay time) async {
+    await init();
     final scheduled = _nextInstanceOfTime(time);
 
     await _plugin.zonedSchedule(
@@ -160,14 +166,26 @@ class NotificationService {
   }
 
   Future<void> cancelDailyReminder() async {
+    await init();
     await _plugin.cancel(id: _dailyReminderId);
   }
 
-  Future<void> scheduleTaskReminder(Task task) async {
+  Future<void> scheduleTaskReminder(Task task,
+      {bool requestPermissionIfNeeded = false}) async {
     if (task.time == null) return;
     if (task.status == TaskStatus.done) return;
 
-    final scheduled = tz.TZDateTime(
+    await init();
+
+    if (requestPermissionIfNeeded) {
+      final enabled = await ensureNotificationPermission();
+      if (!enabled) return;
+    }
+
+    // Ensure we don't end up with multiple scheduled notifications for the same task.
+    await cancelTaskReminder(task.id);
+
+    final due = tz.TZDateTime(
       tz.local,
       task.date.year,
       task.date.month,
@@ -177,16 +195,25 @@ class NotificationService {
     );
 
     final now = tz.TZDateTime.now(tz.local);
-    if (scheduled.isBefore(now)) return;
+    if (due.isBefore(now)) return;
+
+    var scheduled = due.subtract(_taskReminderLeadTime);
+    if (scheduled.isBefore(now)) {
+      // If the task is due in < 5 hours, notify soon (one-time).
+      scheduled = now.add(const Duration(minutes: 1));
+    }
 
     final timeLabel = DateFormat('h:mm a').format(
       DateTime(2024, 1, 1, task.time!.hour, task.time!.minute),
     );
 
+    final hoursUntilDue = due.difference(now).inHours;
+    final bodyPrefix = hoursUntilDue <= 5 ? 'Due soon' : 'Due in 5 hours';
+
     await _plugin.zonedSchedule(
       id: _notificationIdForTaskId(task.id),
       title: task.title,
-      body: 'Reminder at $timeLabel',
+      body: '$bodyPrefix at $timeLabel',
       scheduledDate: scheduled,
       notificationDetails: _defaultDetails(),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -194,6 +221,7 @@ class NotificationService {
   }
 
   Future<void> cancelTaskReminder(String taskId) async {
+    await init();
     await _plugin.cancel(id: _notificationIdForTaskId(taskId));
   }
 }

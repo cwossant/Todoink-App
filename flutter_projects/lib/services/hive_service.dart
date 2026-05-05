@@ -11,6 +11,7 @@ class HiveService {
   static const String _pinnedByDayKey = 'pinnedByDay';
   static const String _filterStatusKey = 'filterStatus';
   static const String _sortOptionKey = 'sortOption';
+  static const String _themeModeKey = 'themeMode';
 
   /// Initialize Hive and open the tasks box
   static Future<void> initHive() async {
@@ -186,6 +187,44 @@ class HiveService {
       await box.put(_sortOptionKey, sortName);
     } catch (e) {
       print('Error saving sort option: $e');
+    }
+  }
+
+  static ThemeMode? getSavedThemeMode() {
+    try {
+      if (!Hive.isBoxOpen(prefsBoxName)) return null;
+      final box = Hive.box(prefsBoxName);
+      final value = box.get(_themeModeKey);
+      if (value is! String) return null;
+
+      switch (value) {
+        case 'system':
+          return ThemeMode.system;
+        case 'light':
+          return ThemeMode.light;
+        case 'dark':
+          return ThemeMode.dark;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> saveThemeMode(ThemeMode mode) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+
+      final value = switch (mode) {
+        ThemeMode.system => 'system',
+        ThemeMode.light => 'light',
+        ThemeMode.dark => 'dark',
+      };
+
+      await box.put(_themeModeKey, value);
+    } catch (e) {
+      print('Error saving theme mode: $e');
     }
   }
 

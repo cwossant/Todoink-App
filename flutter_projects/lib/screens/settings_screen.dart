@@ -179,7 +179,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         .toList(),
                     onChanged: (mode) {
                       if (mode == null) return;
-                      ref.read(themeModeProvider.notifier).state = mode;
+                      ref.read(themeModeProvider.notifier).setThemeMode(mode);
                     },
                   ),
                 ],

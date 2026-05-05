@@ -53,7 +53,10 @@ class TaskNotifier extends StateNotifier<List<Task>> {
     await HiveService.saveTask(newTask);
 
     // Schedule reminder (if any)
-    await NotificationService.instance.scheduleTaskReminder(newTask);
+    await NotificationService.instance.scheduleTaskReminder(
+      newTask,
+      requestPermissionIfNeeded: true,
+    );
   }
 
   /// Update an existing task
@@ -70,7 +73,10 @@ class TaskNotifier extends StateNotifier<List<Task>> {
     if (updatedTask.status == TaskStatus.done || updatedTask.time == null) {
       await NotificationService.instance.cancelTaskReminder(updatedTask.id);
     } else {
-      await NotificationService.instance.scheduleTaskReminder(updatedTask);
+      await NotificationService.instance.scheduleTaskReminder(
+        updatedTask,
+        requestPermissionIfNeeded: true,
+      );
     }
   }
 
@@ -100,7 +106,10 @@ class TaskNotifier extends StateNotifier<List<Task>> {
     if (newStatus == TaskStatus.done || updatedTask.time == null) {
       await NotificationService.instance.cancelTaskReminder(taskId);
     } else {
-      await NotificationService.instance.scheduleTaskReminder(updatedTask);
+      await NotificationService.instance.scheduleTaskReminder(
+        updatedTask,
+        requestPermissionIfNeeded: true,
+      );
     }
   }
 
