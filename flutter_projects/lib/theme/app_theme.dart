@@ -79,7 +79,7 @@ class AppTheme {
           color: Colors.black54,
         ),
       ),
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
@@ -110,16 +110,16 @@ class AppTheme {
         labelMedium: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF9CAF88),
+          color: primaryColor,
           letterSpacing: 0.3,
         ),
       ),
       iconTheme: const IconThemeData(
         color: Colors.black87,
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: Colors.white,
-        selectedItemColor: Color(0xFF9CAF88),
+        selectedItemColor: primaryColor,
         unselectedItemColor: Colors.black54,
       ),
       chipTheme: ChipThemeData(
@@ -145,7 +145,7 @@ class AppTheme {
     const Color darkSurface = Color(0xFF2A3229);
     const Color darkSurfaceVariant = Color(0xFF3A4239);
     const Color darkOutline = Color(0xFF6B7B69);
-    const Color brightPrimaryGreen = Color(0xFF7FBF6B); // Brighter green for dark mode
+    final Color brightPrimaryGreen = primaryColor;
 
     return ThemeData(
       useMaterial3: true,
@@ -173,11 +173,11 @@ class AppTheme {
       ),
       scaffoldBackgroundColor: darkBackground,
       canvasColor: darkSurface,
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         elevation: 0,
         centerTitle: true,
         backgroundColor: darkSurface,
-        titleTextStyle: TextStyle(
+        titleTextStyle: const TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w600,
           color: Colors.white,
@@ -208,10 +208,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(
-            color: brightPrimaryGreen,
-            width: 2,
-          ),
+          borderSide: BorderSide(color: brightPrimaryGreen, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -249,7 +246,7 @@ class AppTheme {
           color: Colors.white70,
         ),
       ),
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
@@ -287,7 +284,7 @@ class AppTheme {
       iconTheme: const IconThemeData(
         color: Colors.white,
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: darkSurface,
         selectedItemColor: brightPrimaryGreen,
         unselectedItemColor: Colors.white54,

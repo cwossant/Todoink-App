@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/hive_service.dart';
+import '../services/home_widget_service.dart';
 
 enum PinToggleStatus {
   pinned,
@@ -50,6 +51,7 @@ class PinnedTasksByDayNotifier
       final next = {...state, key: current};
       state = next;
       await HiveService.savePinnedTaskIdsByDay(next);
+      await HomeWidgetService.updatePinnedTasksWidget(date: date);
       return const PinToggleResult(PinToggleStatus.unpinned);
     }
 
@@ -62,11 +64,13 @@ class PinnedTasksByDayNotifier
     final next = {...state, key: current};
     state = next;
     await HiveService.savePinnedTaskIdsByDay(next);
+    await HomeWidgetService.updatePinnedTasksWidget(date: date);
     return const PinToggleResult(PinToggleStatus.pinned);
   }
 
   Future<void> clearAll() async {
     state = const {};
     await HiveService.savePinnedTaskIdsByDay(state);
+    await HomeWidgetService.updatePinnedTasksWidget();
   }
 }

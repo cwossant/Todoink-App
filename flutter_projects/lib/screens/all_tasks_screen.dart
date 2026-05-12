@@ -85,22 +85,6 @@ class AllTasksScreen extends ConsumerWidget {
     );
   }
 
-  String _dayHeaderLabel(DateTime date, DateTime todayStart) {
-    final day = DateTime(date.year, date.month, date.day);
-    if (day.year == todayStart.year &&
-        day.month == todayStart.month &&
-        day.day == todayStart.day) {
-      return 'Today';
-    }
-    final tomorrow = todayStart.add(const Duration(days: 1));
-    if (day.year == tomorrow.year &&
-        day.month == tomorrow.month &&
-        day.day == tomorrow.day) {
-      return 'Tomorrow';
-    }
-    return DateFormat('EEE, MMM d').format(day);
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final allTasks = ref.watch(filteredAndSortedTasksProvider);

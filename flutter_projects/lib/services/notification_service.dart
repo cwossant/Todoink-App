@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/task.dart';
 import '../models/task_status.dart';
+import 'hive_service.dart';
 
 class NotificationService {
   NotificationService._();
@@ -14,20 +16,115 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   static const int _dailyReminderId = 9000;
-  static const Duration _taskReminderLeadTime = Duration(hours: 5);
+  static const int _testNotificationId = 9001;
+
+  /// Enables faster scheduling for local-notification testing.
+  ///
+  /// Run with: `flutter run --dart-define=FAST_REMINDERS=true`
+  static const bool _fastReminders =
+      bool.fromEnvironment('FAST_REMINDERS', defaultValue: false);
+
+  static const Duration _taskReminderLeadTimeNormal = Duration(hours: 5);
+  static const Duration _soonDelayNormal = Duration(minutes: 1);
+  static const Duration _soonDelayFast = Duration(seconds: 5);
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
   bool _isInitialized = false;
 
+  bool get inAppNotificationsEnabled => HiveService.getAppNotificationsEnabled();
+
+  Future<void> setInAppNotificationsEnabled(bool enabled) async {
+    await HiveService.setAppNotificationsEnabled(enabled);
+    if (!enabled) {
+      await init();
+      await _plugin.cancelAll();
+    }
+  }
+
+  /// Best-effort check for OS/system notification enablement (permission + settings).
+  ///
+  /// Returns:
+  /// - `true` if enabled
+  /// - `false` if disabled
+  /// - `null` if the platform/plugin version doesn't expose a reliable check
+  Future<bool?> areSystemNotificationsEnabled() async {
+    await init();
+
+    // First: runtime permission (Android 13+/iOS).
+    try {
+      final granted = await Permission.notification.isGranted;
+      if (granted == false) return false;
+    } catch (_) {
+      // Ignore; permission may not be supported on this platform/version.
+    }
+
+    try {
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (androidImpl != null) {
+        final enabled = await (androidImpl as dynamic).areNotificationsEnabled();
+        if (enabled is bool) return enabled;
+      }
+    } catch (_) {
+      // Ignore; fall through to iOS check.
+    }
+
+    try {
+      final iosImpl = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+
+      if (iosImpl == null) return null;
+
+      final permissions = await (iosImpl as dynamic).checkPermissions();
+      if (permissions is bool) return permissions;
+
+      // Some plugin versions return a permissions object.
+      if (permissions != null) {
+        final alert = (permissions as dynamic).alert;
+        final badge = (permissions as dynamic).badge;
+        final sound = (permissions as dynamic).sound;
+        if (alert is bool || badge is bool || sound is bool) {
+          return (alert == true) || (badge == true) || (sound == true);
+        }
+      }
+    } catch (_) {
+      // Ignore.
+    }
+
+    // If we couldn't determine system-level enablement, fall back to permission.
+    try {
+      return await Permission.notification.isGranted;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> init() async {
     if (_isInitialized) return;
 
     tz.initializeTimeZones();
     try {
-      final localTimeZone = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(localTimeZone));
+      final dynamic localTimeZone = await FlutterTimezone.getLocalTimezone();
+      String? tzName;
+
+      if (localTimeZone is String) {
+        tzName = localTimeZone;
+      } else {
+        final dynamic identifier = localTimeZone?.identifier;
+        final dynamic name = localTimeZone?.name;
+
+        if (identifier is String) {
+          tzName = identifier;
+        } else if (name is String) {
+          tzName = name;
+        }
+      }
+
+      if (tzName != null && tzName.isNotEmpty) {
+        tz.setLocalLocation(tz.getLocation(tzName));
+      }
     } catch (_) {
       // If timezone lookup fails, fall back to tz.local defaults.
     }
@@ -48,51 +145,45 @@ class NotificationService {
   /// - `false` if disabled
   /// - `null` if the platform/plugin version doesn't expose a reliable check
   Future<bool?> areNotificationsEnabled() async {
-    await init();
-
-    try {
-      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      final enabled = await (androidImpl as dynamic?)?.areNotificationsEnabled();
-      if (enabled is bool) return enabled;
-    } catch (_) {
-      // Ignore; fall through to iOS check.
-    }
-
-    try {
-      final iosImpl = _plugin.resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>();
-
-      final permissions = await (iosImpl as dynamic?)?.checkPermissions();
-      if (permissions is bool) return permissions;
-
-      // Some plugin versions return a permissions object.
-      if (permissions != null) {
-        final alert = (permissions as dynamic).alert;
-        final badge = (permissions as dynamic).badge;
-        final sound = (permissions as dynamic).sound;
-        if (alert is bool || badge is bool || sound is bool) {
-          return (alert == true) || (badge == true) || (sound == true);
-        }
-      }
-    } catch (_) {
-      // Ignore.
-    }
-
-    return null;
+    if (!inAppNotificationsEnabled) return false;
+    return areSystemNotificationsEnabled();
   }
 
   /// Requests notification permission only if not already enabled.
   ///
   /// Returns `true` if notifications are enabled after the call.
   Future<bool> ensureNotificationPermission() async {
-    final enabledBefore = await areNotificationsEnabled();
+    if (!inAppNotificationsEnabled) return false;
+
+    final enabledBefore = await areSystemNotificationsEnabled();
     if (enabledBefore == true) return true;
 
     await requestPermissions();
 
-    final enabledAfter = await areNotificationsEnabled();
+    final enabledAfter = await areSystemNotificationsEnabled();
     return enabledAfter ?? false;
+  }
+
+  /// Sends an immediate local notification to verify notifications are working.
+  ///
+  /// Returns `true` if the app believes notifications are enabled and the call
+  /// to show the notification completed.
+  Future<bool> showTestNotification() async {
+    await init();
+
+    if (!inAppNotificationsEnabled) return false;
+
+    final enabled = await ensureNotificationPermission();
+    if (!enabled) return false;
+
+    await _plugin.show(
+      id: _testNotificationId,
+      title: 'Todoink Test',
+      body: 'If you can see this, notifications are working.',
+      notificationDetails: _defaultDetails(),
+    );
+
+    return true;
   }
 
   Future<void> requestPermissions() async {
@@ -151,6 +242,7 @@ class NotificationService {
   }
 
   Future<void> scheduleDailyReminder(TimeOfDay time) async {
+    if (!inAppNotificationsEnabled) return;
     await init();
     final scheduled = _nextInstanceOfTime(time);
 
@@ -172,6 +264,7 @@ class NotificationService {
 
   Future<void> scheduleTaskReminder(Task task,
       {bool requestPermissionIfNeeded = false}) async {
+    if (!inAppNotificationsEnabled) return;
     if (task.time == null) return;
     if (task.status == TaskStatus.done) return;
 
@@ -195,12 +288,21 @@ class NotificationService {
     );
 
     final now = tz.TZDateTime.now(tz.local);
-    if (due.isBefore(now)) return;
+    if (!due.isAfter(now)) return;
 
-    var scheduled = due.subtract(_taskReminderLeadTime);
-    if (scheduled.isBefore(now)) {
-      // If the task is due in < 5 hours, notify soon (one-time).
-      scheduled = now.add(const Duration(minutes: 1));
+    const leadTime = _taskReminderLeadTimeNormal;
+    const soonDelay = _soonDelayNormal;
+
+    tz.TZDateTime scheduled;
+    if (_fastReminders) {
+      // Fast testing mode: fire quickly regardless of due time.
+      scheduled = now.add(_soonDelayFast);
+    } else {
+      scheduled = due.subtract(leadTime);
+      if (!scheduled.isAfter(now)) {
+        // If the task is due soon, notify soon (one-time).
+        scheduled = now.add(soonDelay);
+      }
     }
 
     final timeLabel = DateFormat('h:mm a').format(
@@ -208,7 +310,8 @@ class NotificationService {
     );
 
     final hoursUntilDue = due.difference(now).inHours;
-    final bodyPrefix = hoursUntilDue <= 5 ? 'Due soon' : 'Due in 5 hours';
+    final bodyPrefix =
+      _fastReminders ? 'Test reminder' : (hoursUntilDue <= 5 ? 'Due soon' : 'Due in 5 hours');
 
     await _plugin.zonedSchedule(
       id: _notificationIdForTaskId(task.id),

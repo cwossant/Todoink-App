@@ -12,6 +12,9 @@ class HiveService {
   static const String _filterStatusKey = 'filterStatus';
   static const String _sortOptionKey = 'sortOption';
   static const String _themeModeKey = 'themeMode';
+  static const String _primaryColorKey = 'primaryColor';
+  static const String _hasSeenShowcaseKey = 'hasSeenShowcase';
+  static const String _appNotificationsEnabledKey = 'appNotificationsEnabled';
 
   /// Initialize Hive and open the tasks box
   static Future<void> initHive() async {
@@ -225,6 +228,72 @@ class HiveService {
       await box.put(_themeModeKey, value);
     } catch (e) {
       print('Error saving theme mode: $e');
+    }
+  }
+
+  static int? getSavedPrimaryColorValue() {
+    try {
+      if (!Hive.isBoxOpen(prefsBoxName)) return null;
+      final box = Hive.box(prefsBoxName);
+      final value = box.get(_primaryColorKey);
+      return value is int ? value : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> savePrimaryColorValue(int value) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      await box.put(_primaryColorKey, value);
+    } catch (e) {
+      print('Error saving primary color: $e');
+    }
+  }
+
+  static bool getHasSeenShowcase() {
+    try {
+      if (!Hive.isBoxOpen(prefsBoxName)) return false;
+      final box = Hive.box(prefsBoxName);
+      final value = box.get(_hasSeenShowcaseKey);
+      return value is bool ? value : false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setHasSeenShowcase(bool value) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      await box.put(_hasSeenShowcaseKey, value);
+    } catch (e) {
+      print('Error saving showcase flag: $e');
+    }
+  }
+
+  /// In-app notifications toggle (separate from OS permission).
+  ///
+  /// Defaults to `false` on first install.
+  static bool getAppNotificationsEnabled() {
+    try {
+      if (!Hive.isBoxOpen(prefsBoxName)) return false;
+      final box = Hive.box(prefsBoxName);
+      final value = box.get(_appNotificationsEnabledKey);
+      return value is bool ? value : false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setAppNotificationsEnabled(bool value) async {
+    try {
+      await ensurePrefsBoxOpen();
+      final box = Hive.box(prefsBoxName);
+      await box.put(_appNotificationsEnabledKey, value);
+    } catch (e) {
+      print('Error saving in-app notifications toggle: $e');
     }
   }
 

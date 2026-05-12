@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../providers/pinned_tasks_provider.dart';
 import '../providers/task_provider.dart';
@@ -16,7 +15,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  Future<bool?>? _notificationsEnabledFuture;
+  bool _inAppNotificationsEnabled = HiveService.getAppNotificationsEnabled();
 
   String _themeLabel(ThemeMode mode) {
     switch (mode) {
@@ -26,66 +25,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return 'Light';
       case ThemeMode.dark:
         return 'Dark';
-    }
-  }
-
-  Future<void> _handleNotificationsTap(BuildContext context) async {
-    final enabledBefore =
-        await NotificationService.instance.areNotificationsEnabled();
-
-    if (!context.mounted) return;
-
-    if (enabledBefore == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notifications already enabled')),
-      );
-      setState(() {
-        _notificationsEnabledFuture =
-            NotificationService.instance.areNotificationsEnabled();
-      });
-      return;
-    }
-
-    await NotificationService.instance.ensureNotificationPermission();
-    final enabledNow =
-        await NotificationService.instance.areNotificationsEnabled();
-
-    if (!context.mounted) return;
-
-    setState(() {
-      _notificationsEnabledFuture =
-          NotificationService.instance.areNotificationsEnabled();
-    });
-
-    if (enabledNow == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notifications enabled')),
-      );
-      return;
-    }
-
-    final open = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enable Notifications'),
-        content: const Text(
-          'Notifications are still disabled. You can enable them in your phone settings.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Open Settings'),
-          ),
-        ],
-      ),
-    );
-
-    if (open == true) {
-      await openAppSettings();
     }
   }
 
@@ -187,7 +126,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+
 
           // Notifications Section
           Text(
@@ -201,31 +141,98 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            child: FutureBuilder<bool?>(
-              future: _notificationsEnabledFuture ??=
-                  NotificationService.instance.areNotificationsEnabled(),
-              builder: (context, snapshot) {
-                final enabled = snapshot.data == true;
-                final statusText = enabled ? 'Enabled' : 'Disabled';
-                final statusColor = enabled
-                    ? Theme.of(context).colorScheme.primary
-                    : (Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey[400]
-                        : Colors.grey[600]);
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SwitchListTile(
+                  title: const Text('In-app notifications'),
+                  subtitle: const Text('Turn reminders on/off inside the app'),
+                  value: _inAppNotificationsEnabled,
+                  onChanged: (value) async {
+                    final messenger = ScaffoldMessenger.of(context);
 
-                return ListTile(
-                  title: const Text('Notifications'),
-                  subtitle: Text('Status: $statusText'),
-                  trailing: Text(
-                    statusText,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: statusColor, fontWeight: FontWeight.w700),
+                    setState(() {
+                      _inAppNotificationsEnabled = value;
+                    });
+
+                    await NotificationService.instance
+                        .setInAppNotificationsEnabled(value);
+
+                    if (!mounted) return;
+
+                    if (value) {
+                      final granted =
+                          await NotificationService.instance.ensureNotificationPermission();
+
+                      if (!mounted) return;
+
+                      if (!granted) {
+                        await NotificationService.instance
+                            .setInAppNotificationsEnabled(false);
+                        if (!mounted) return;
+
+                        setState(() {
+                          _inAppNotificationsEnabled = false;
+                        });
+
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Notifications are blocked in system settings. Toggle turned off.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+
+                      final tasks = ref.read(taskProvider);
+                      for (final task in tasks) {
+                        await NotificationService.instance.scheduleTaskReminder(task);
+                      }
+
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('In-app notifications enabled'),
+                        ),
+                      );
+                    } else {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('In-app notifications disabled'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text('Send test notification'),
+                  subtitle: Text(
+                    _inAppNotificationsEnabled
+                        ? 'Use this to confirm it works'
+                        : 'Enable in-app notifications first',
                   ),
-                  onTap: () => _handleNotificationsTap(context),
-                );
-              },
+                  trailing: const Icon(Icons.notifications),
+                  onTap: !_inAppNotificationsEnabled
+                      ? null
+                      : () async {
+                          final ok = await NotificationService.instance
+                              .showTestNotification();
+
+                          if (!context.mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ok
+                                    ? 'Test notification sent'
+                                    : 'Notifications are blocked in system settings.',
+                              ),
+                            ),
+                          );
+                        },
+                ),
+              ],
             ),
           ),
 

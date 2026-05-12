@@ -9,6 +9,7 @@ import '../providers/pinned_tasks_provider.dart';
 import '../widgets/filter_sort_sheet.dart';
 import '../widgets/timeline_task_tile.dart';
 import '../services/notification_service.dart';
+import '../services/hive_service.dart';
 import 'add_edit_task_screen.dart';
 import 'all_tasks_screen.dart';
 import 'settings_screen.dart';
@@ -31,6 +32,105 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _notificationsEnabledFuture =
         NotificationService.instance.areNotificationsEnabled();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowFirstRunShowcase();
+    });
+  }
+
+  Future<void> _maybeShowFirstRunShowcase() async {
+    if (HiveService.getHasSeenShowcase()) return;
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        final headlineStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+            );
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+          title: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colorScheme.primaryContainer,
+                ),
+                child: Icon(
+                  Icons.check_circle,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Welcome to Todoink',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: headlineStyle,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Your day, but lighter. Here’s what you can do in seconds:',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 14),
+              const _ShowcaseCard(
+                icon: Icons.push_pin,
+                title: 'Pin what matters',
+                subtitle: 'Keep up to 3 must‑do tasks on top.',
+              ),
+              const SizedBox(height: 10),
+              const _ShowcaseCard(
+                icon: Icons.notifications_active,
+                title: 'Get reminders',
+                subtitle: 'Never miss deadlines or routines.',
+              ),
+              const SizedBox(height: 10),
+              const _ShowcaseCard(
+                icon: Icons.tune,
+                title: 'Filter & sort fast',
+                subtitle: 'Find what you need instantly.',
+              ),
+              const SizedBox(height: 10),
+              const _ShowcaseCard(
+                icon: Icons.palette,
+                title: 'Pick a green theme',
+                subtitle: 'Choose a vibe that feels calm.',
+              ),
+              const SizedBox(height: 6),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Let’s go'),
+              ),
+            )
+          ],
+        );
+      },
+    );
+
+    await HiveService.setHasSeenShowcase(true);
   }
 
   void _showAddTaskScreen() {
@@ -110,9 +210,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _setDailyReminder() async {
     final enabledBefore =
-        await NotificationService.instance.areNotificationsEnabled();
+      await NotificationService.instance.areNotificationsEnabled();
+
+    // Home CTA should enable the in-app toggle as well.
+    if (!NotificationService.instance.inAppNotificationsEnabled) {
+      await NotificationService.instance.setInAppNotificationsEnabled(true);
+    }
+
     final enabledAfter =
-        await NotificationService.instance.ensureNotificationPermission();
+      await NotificationService.instance.ensureNotificationPermission();
 
     if (mounted) {
       setState(() {
@@ -231,7 +337,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               sliver: SliverToBoxAdapter(
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Column(
@@ -257,24 +363,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
-                        ),
+                    IconButton(
+                      tooltip: 'Settings',
+                      iconSize: 30,
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
                       ),
-                      child: CircleAvatar(
-                        radius: 22,
-                        backgroundColor: colorScheme.surfaceContainerHighest,
-                        child: Text(
-                          userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                      ),
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
+                        );
+
+                        if (!mounted) return;
+                        setState(() {
+                          _notificationsEnabledFuture =
+                              NotificationService.instance.areNotificationsEnabled();
+                        });
+                      },
+                      icon: const Icon(Icons.settings),
                     ),
                   ],
                 ),
@@ -411,7 +520,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Never miss your routine! Set a reminder to stay on track.',
+                              'Never miss your tasks! Set a reminder to stay on track.',
                               style: Theme.of(context).textTheme.bodySmall,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -544,6 +653,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   (context, index) {
                     final task = displayTasksForDate[index];
                     final isPinned = pinnedIdsForSelectedDay.contains(task.id);
+                    final overdue = _isOverdue(task, now, baseDate);
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: TimelineTaskTile(
@@ -553,6 +663,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         onDelete: () => _deleteTask(task.id),
                         isPinned: isPinned,
                         onTogglePin: () => _togglePin(task),
+                        isOverdue: overdue,
                       ),
                     );
                   },
@@ -570,6 +681,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         tooltip: 'Add new task',
         shape: const CircleBorder(),
         child: const Icon(Icons.add, size: 28),
+      ),
+    );
+  }
+}
+
+class _ShowcaseCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _ShowcaseCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: colorScheme.surfaceContainerHighest,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colorScheme.primary.withValues(alpha: 0.12),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

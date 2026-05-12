@@ -29,6 +29,7 @@ dependencies:
   # UI & Material Design 3
   cupertino_icons: ^1.0.2
   flutter_local_notifications: ^21.0.0
+  home_widget: ^0.7.0
   timezone: ^0.11.0
   flutter_timezone: ^5.0.2
   permission_handler: ^11.3.1

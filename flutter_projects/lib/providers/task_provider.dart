@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/task_status.dart';
 import '../services/hive_service.dart';
+import '../services/home_widget_service.dart';
 import '../services/notification_service.dart';
 
 /// Provider for managing the list of all tasks
@@ -23,13 +24,18 @@ class TaskNotifier extends StateNotifier<List<Task>> {
       state = savedTasks;
 
       // Best-effort rescheduling of reminders for upcoming tasks.
+      final inAppEnabled = NotificationService.instance.inAppNotificationsEnabled;
       for (final task in savedTasks) {
         if (task.status == TaskStatus.done) {
+          await NotificationService.instance.cancelTaskReminder(task.id);
+        } else if (!inAppEnabled) {
           await NotificationService.instance.cancelTaskReminder(task.id);
         } else {
           await NotificationService.instance.scheduleTaskReminder(task);
         }
       }
+
+      await HomeWidgetService.updatePinnedTasksWidget();
     } catch (e) {
       print('Error loading tasks from storage: $e');
     }
@@ -52,6 +58,8 @@ class TaskNotifier extends StateNotifier<List<Task>> {
     // Save to Hive
     await HiveService.saveTask(newTask);
 
+    await HomeWidgetService.updatePinnedTasksWidget();
+
     // Schedule reminder (if any)
     await NotificationService.instance.scheduleTaskReminder(
       newTask,
@@ -68,6 +76,8 @@ class TaskNotifier extends StateNotifier<List<Task>> {
 
     // Save to Hive
     await HiveService.saveTask(updatedTask);
+
+    await HomeWidgetService.updatePinnedTasksWidget();
 
     // Update reminder
     if (updatedTask.status == TaskStatus.done || updatedTask.time == null) {
@@ -87,6 +97,8 @@ class TaskNotifier extends StateNotifier<List<Task>> {
     // Delete from Hive
     await HiveService.deleteTask(taskId);
 
+    await HomeWidgetService.updatePinnedTasksWidget();
+
     // Cancel reminder
     await NotificationService.instance.cancelTaskReminder(taskId);
   }
@@ -101,6 +113,8 @@ class TaskNotifier extends StateNotifier<List<Task>> {
     // Find and save the updated task
     final updatedTask = state.firstWhere((task) => task.id == taskId);
     await HiveService.saveTask(updatedTask);
+
+    await HomeWidgetService.updatePinnedTasksWidget();
 
     // Update reminder
     if (newStatus == TaskStatus.done || updatedTask.time == null) {
@@ -136,6 +150,8 @@ class TaskNotifier extends StateNotifier<List<Task>> {
       await NotificationService.instance.cancelTaskReminder(task.id);
     }
 
+    await HomeWidgetService.updatePinnedTasksWidget();
+
     return completed.length;
   }
 
@@ -147,5 +163,7 @@ class TaskNotifier extends StateNotifier<List<Task>> {
 
     state = [];
     await HiveService.clearAllTasks();
+
+    await HomeWidgetService.updatePinnedTasksWidget();
   }
 }

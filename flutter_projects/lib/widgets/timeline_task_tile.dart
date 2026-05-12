@@ -61,6 +61,8 @@ class TimelineTaskTile extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final statusColor = _getStatusColor(task.status);
 
+    final overdueActive = isOverdue && task.status != TaskStatus.done;
+
     final timeText = task.time == null
         ? null
         : DateFormat('h:mm a').format(
@@ -73,6 +75,8 @@ class TimelineTaskTile extends ConsumerWidget {
             ? task.description
             : task.status.displayName);
 
+    final titleText = timeText == null ? task.title : '$timeText – ${task.title}';
+
     final titleStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
           fontWeight: FontWeight.w700,
           decoration: task.status == TaskStatus.done
@@ -82,7 +86,7 @@ class TimelineTaskTile extends ConsumerWidget {
               ? (Theme.of(context).brightness == Brightness.dark
                   ? Colors.grey[500]
                   : Colors.grey)
-              : null,
+          : (overdueActive ? colorScheme.error : null),
         );
 
     return SizedBox(
@@ -154,6 +158,8 @@ class TimelineTaskTile extends ConsumerWidget {
           Expanded(
             child: Card(
               margin: const EdgeInsets.only(bottom: 10),
+              color:
+                  overdueActive ? colorScheme.errorContainer.withValues(alpha: 0.35) : null,
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: onEdit,
@@ -167,37 +173,38 @@ class TimelineTaskTile extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              task.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: titleStyle,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    titleText,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: titleStyle,
+                                  ),
+                                ),
+                                if (isPinned) ...[
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    Icons.push_pin,
+                                    size: 16,
+                                    color: colorScheme.primary,
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              subtitle,
+                              overdueActive ? 'Overdue • $subtitle' : subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: overdueActive ? colorScheme.error : null,
+                                  ),
                             ),
                           ],
                         ),
                       ),
-                      if (timeText != null) ...[
-                        const SizedBox(width: 10),
-                        Text(
-                          timeText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: isOverdue
-                                        ? colorScheme.error
-                                        : colorScheme.primary,
-                                  ),
-                        ),
-                      ],
                       PopupMenuButton<String>(
                         onSelected: (value) {
                           if (value == 'edit') {
@@ -271,7 +278,7 @@ class _DottedConnector extends StatelessWidget {
       builder: (context, constraints) {
         const dotHeight = 3.0;
         const gap = 4.0;
-        final full = dotHeight + gap;
+        const full = dotHeight + gap;
         final count = (constraints.maxHeight / full).floor();
         final dotCount = count < 1 ? 1 : count;
 
